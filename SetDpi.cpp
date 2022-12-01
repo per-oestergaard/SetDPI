@@ -101,6 +101,10 @@ void GetDisplayData()
             {
                 nameString += L"(internal display)";
             }
+            wcout << L"nameString= ";
+            wcout << nameString;
+            wcout << "adapterId=" << adapterLUID.HighPart << "-" << adapterLUID.LowPart << " sourceId=" << sourceID << " targetId=" << targetID << endl;
+            wcout << "\n";
             DisplayData dd = {};
             dd.m_adapterId = adapterLUID;
             dd.m_sourceID = sourceID;
@@ -114,7 +118,7 @@ void GetDisplayData()
     }
 }
 bool DPIFound(int val)
-{   
+{
     bool found = false;
     for (int i = 0; i < 12; i++)
     {
@@ -129,7 +133,16 @@ bool DPIFound(int val)
 int main(int argc, char* argv[])
 {
     int n = 0, dpiToSet = 0;
-    if (argc == 2)
+    cout << strcmp(argv[1], "--dump") << endl;
+    if (argc == 2 && strcmp(argv[1],"--dump")==0)
+    {
+        cout << "dump" << endl;
+        GetDisplayData();
+        for (const auto& disp : m_displayDataCache)
+        {
+        }
+    }
+    else if (argc == 2)
     {
         dpiToSet = atoi(argv[1]);
         if (!DPIFound(dpiToSet))
