@@ -138,8 +138,12 @@ int main(int argc, char* argv[])
     {
         cout << "dump" << endl;
         GetDisplayData();
-        for (const auto& disp : m_displayDataCache)
-        {
+        for (int i = 0; i < m_displayDataCache.upper_bound; i++) {
+            wcout << i;
+            wcout << m_displayDataCache[i].m_adapterId.HighPart;
+            wcout << m_displayDataCache[i].m_adapterId.LowPart;
+            wcout << m_displayDataCache[i].m_targetID;
+            wcout << m_displayDataCache[i].m_sourceID;
         }
     }
     else if (argc == 2)
