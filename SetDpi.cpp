@@ -1,10 +1,10 @@
-#include <iostream>
+#include "DpiHelper.h"
 #include <Windows.h>
-#include <vector>
+#include <cstringt.h>
+#include <iostream>
 #include <map>
 #include <string>
-#include <cstringt.h>
-#include "DpiHelper.h"
+#include <vector>
 using namespace std;
 
 /*Get default DPI scaling percentage.
@@ -24,30 +24,6 @@ int GetRecommendedDPIScaling()
     return -1;
 }
 
-void SetDpiScaling(int percentScaleToSet)
-{
-    int recommendedDpiScale = GetRecommendedDPIScaling();
-
-    if (recommendedDpiScale > 0)
-    {
-        int index = 0, recIndex = 0, setIndex = 0;
-        for (const auto& scale : DpiVals)
-        {
-            if (recommendedDpiScale == scale)
-            {
-                recIndex = index;
-            }
-            if (percentScaleToSet == scale)
-            {
-                setIndex = index;
-            }
-            index++;
-        }
-
-        int relativeIndex = setIndex - recIndex;
-        SystemParametersInfo(SPI_SETLOGICALDPIOVERRIDE, relativeIndex, (LPVOID)0, 1);
-    }
-}
 //to store display info along with corresponding list item
 struct DisplayData {
     LUID m_adapterId;
@@ -60,12 +36,10 @@ struct DisplayData {
         m_targetID = m_sourceID = -1;
     }
 };
-std::map<int, DisplayData> m_displayDataCache;
 
-
-void GetDisplayData()
+std::vector<DisplayData> GetDisplayData()
 {
-    m_displayDataCache.clear();
+    std::vector<DisplayData> displayDataCache;
     std::vector<DISPLAYCONFIG_PATH_INFO> pathsV;
     std::vector<DISPLAYCONFIG_MODE_INFO> modesV;
     int flags = QDC_ONLY_ACTIVE_PATHS;
@@ -73,12 +47,9 @@ void GetDisplayData()
     {
         cout << "DpiHelper::GetPathsAndModes() failed\n";
     }
-    else
-    {
-        cout << "DpiHelper::GetPathsAndModes() successful\n";
-    }
-    int iIndex = 0;
-    for (const auto& path : pathsV)
+    displayDataCache.resize(pathsV.size());
+    int idx = 0;
+    for (const auto &path : pathsV)
     {
         //get display name
         auto adapterLUID = path.targetInfo.adapterId;
@@ -96,7 +67,7 @@ void GetDisplayData()
         }
         else
         {
-            std::wstring nameString = std::to_wstring(iIndex) + std::wstring(L". ") + deviceName.monitorFriendlyDeviceName;
+            std::wstring nameString = std::to_wstring(idx) + std::wstring(L". ") + deviceName.monitorFriendlyDeviceName;
             if (DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL == deviceName.outputTechnology)
             {
                 nameString += L"(internal display)";
@@ -110,13 +81,13 @@ void GetDisplayData()
             dd.m_sourceID = sourceID;
             dd.m_targetID = targetID;
 
-            m_displayDataCache[iIndex] = dd;
-            iIndex++;
-
-
+            displayDataCache[idx] = dd;
         }
+        idx++;
     }
+    return displayDataCache;
 }
+
 bool DPIFound(int val)
 {
     bool found = false;
@@ -130,51 +101,55 @@ bool DPIFound(int val)
     }
     return found;
 }
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
-    int n = 0, dpiToSet = 0;
-    cout << strcmp(argv[1], "--dump") << endl;
-    if (argc == 2 && strcmp(argv[1],"--dump")==0)
+    auto dpiToSet = 0;
+    auto displayIndex = 1;
+
+    enum
     {
-        cout << "dump" << endl;
-        GetDisplayData();
-        for (int i = 0; i < m_displayDataCache.upper_bound; i++) {
-            wcout << i;
-            wcout << m_displayDataCache[i].m_adapterId.HighPart;
-            wcout << m_displayDataCache[i].m_adapterId.LowPart;
-            wcout << m_displayDataCache[i].m_targetID;
-            wcout << m_displayDataCache[i].m_sourceID;
+        RESOLUTION_SET,
+        RESOLUTION_GET,
+        RESOLUTION_VALUE,
+    } resolutionMode = RESOLUTION_SET;
+
+    if (argc <= 1)
+    {
+        cout << "1. argument: Resolution in percent, use \"get\" to print the current value instead and \"value\" to print without formatting\n";
+        cout << "2. argument: Monitor index, leave empty to use primary monitor\n";
+        return 0;
+    }
+
+    if (argc >= 2)
+    {
+        if (strcmp(argv[1], "get") == 0)
+        {
+            resolutionMode = RESOLUTION_GET;
+        }
+        else if (strcmp(argv[1], "value") == 0)
+        {
+            resolutionMode = RESOLUTION_VALUE;
+        }
+        else
+        {
+            dpiToSet = atoi(argv[1]);
         }
     }
-    else if (argc == 2)
+
+    if (argc >= 3)
     {
-        dpiToSet = atoi(argv[1]);
-        if (!DPIFound(dpiToSet))
-        {
-            cout << "Invalid DPI scale value: " << dpiToSet;
-            return 0;
-        }
-        SetDpiScaling(dpiToSet);
+        displayIndex = atoi(argv[2]);
     }
-    else if (argc == 3)
+
+    auto displayDataCache = GetDisplayData();
+    if (displayIndex < 1 || displayDataCache.size() < displayIndex)
     {
-        GetDisplayData();
-        int displayIndex = atoi(argv[1]);
-        int dpiToSet = atoi(argv[2]);
-        bool notFound = true;
-        if (!DPIFound(dpiToSet))
+        if (DPIFound(displayIndex) && 1 <= dpiToSet && dpiToSet <= displayDataCache.size())
         {
-            cout << "Invalid DPI scale value: " << dpiToSet;
-            return 0;
-        }
-        if (displayIndex <= m_displayDataCache.size() && displayIndex > 0)
-        {
-            auto res = DpiHelper::SetDPIScaling(m_displayDataCache[displayIndex - 1].m_adapterId, m_displayDataCache[displayIndex - 1].m_sourceID, dpiToSet);
-            if (false == res)
-            {
-                cout << "DpiHelper::SetDPIScaling() failed";
-                return 0;
-            }
+            cout << "Please provide the scale as first and the index as second argument, program will continue for legacy purposes\n";
+            auto t = dpiToSet;
+            dpiToSet = displayIndex;
+            displayIndex = t;
         }
         else
         {
@@ -182,10 +157,44 @@ int main(int argc, char* argv[])
             return 0;
         }
     }
+
+    displayIndex -= 1; // change from 1...X to 0...(X-1)
+
+    auto currentResolution = DpiHelper::GetDPIScalingInfo(displayDataCache[displayIndex].m_adapterId, displayDataCache[displayIndex].m_sourceID);
+    if (resolutionMode == RESOLUTION_GET)
+    {
+        cout << "Current Resolution: " << currentResolution.current;
+        return 0;
+    }
+    if (resolutionMode == RESOLUTION_VALUE)
+    {
+        cout << currentResolution.current;
+        return 0;
+    }
+    if (!DPIFound(dpiToSet))
+    {
+        cout << "Invalid DPI scale value: " << dpiToSet;
+        return 0;
+    }
+    auto success = DpiHelper::SetDPIScaling(displayDataCache[displayIndex].m_adapterId, displayDataCache[displayIndex].m_sourceID, dpiToSet);
+    if (success == false)
+    {
+        cout << "DpiHelper::SetDPIScaling() failed";
+        return 0;
+    }
     else
     {
-        cout << "Error: Provide a dpi scale (e.g. 150) as command line argument";
+        if (displayIndex == 0)
+        {
+            HKEY hKey;
+            LPCWSTR sKeyPath;
+            DWORD value = static_cast<DWORD>(int(dpiToSet * 0.96));
+            int iResult;
+            sKeyPath = L"Control Panel\\Desktop\\WindowMetrics\\";
+            iResult = RegOpenKeyEx(HKEY_CURRENT_USER, sKeyPath, NULL, KEY_ALL_ACCESS, &hKey);
+            iResult = RegSetValueEx(hKey, L"AppliedDPI", NULL, REG_DWORD, (const BYTE*)&value, sizeof(value));
+            RegCloseKey(hKey);
+            return 0;
+        }
     }
-
-    return 0;
 }
